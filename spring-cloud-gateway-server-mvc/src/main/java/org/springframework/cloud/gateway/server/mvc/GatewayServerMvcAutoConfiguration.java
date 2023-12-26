@@ -30,16 +30,11 @@ import org.springframework.boot.web.client.RestClientCustomizer;
 import org.springframework.cloud.gateway.server.mvc.common.ArgumentSupplierBeanPostProcessor;
 import org.springframework.cloud.gateway.server.mvc.config.GatewayMvcProperties;
 import org.springframework.cloud.gateway.server.mvc.config.GatewayMvcPropertiesBeanDefinitionRegistrar;
-import org.springframework.cloud.gateway.server.mvc.filter.FormFilter;
-import org.springframework.cloud.gateway.server.mvc.filter.ForwardedRequestHeadersFilter;
+import org.springframework.cloud.gateway.server.mvc.config.locator.GatewayRouteDefinitionLocator;
+import org.springframework.cloud.gateway.server.mvc.config.locator.PropertyGatewayRouteDefinitionLocator;
+import org.springframework.cloud.gateway.server.mvc.filter.*;
 import org.springframework.cloud.gateway.server.mvc.filter.HttpHeadersFilter.RequestHttpHeadersFilter;
 import org.springframework.cloud.gateway.server.mvc.filter.HttpHeadersFilter.ResponseHttpHeadersFilter;
-import org.springframework.cloud.gateway.server.mvc.filter.RemoveContentLengthRequestHeadersFilter;
-import org.springframework.cloud.gateway.server.mvc.filter.RemoveHopByHopRequestHeadersFilter;
-import org.springframework.cloud.gateway.server.mvc.filter.RemoveHopByHopResponseHeadersFilter;
-import org.springframework.cloud.gateway.server.mvc.filter.TransferEncodingNormalizationRequestHeadersFilter;
-import org.springframework.cloud.gateway.server.mvc.filter.WeightCalculatorFilter;
-import org.springframework.cloud.gateway.server.mvc.filter.XForwardedRequestHeadersFilter;
 import org.springframework.cloud.gateway.server.mvc.handler.ProxyExchange;
 import org.springframework.cloud.gateway.server.mvc.handler.ProxyExchangeHandlerFunction;
 import org.springframework.cloud.gateway.server.mvc.handler.RestClientProxyExchange;
@@ -52,10 +47,16 @@ import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 
-@AutoConfiguration(after = { RestTemplateAutoConfiguration.class, RestClientAutoConfiguration.class })
+@AutoConfiguration(after = {RestTemplateAutoConfiguration.class, RestClientAutoConfiguration.class})
 @ConditionalOnProperty(name = "spring.cloud.gateway.mvc.enabled", matchIfMissing = true)
 @Import(GatewayMvcPropertiesBeanDefinitionRegistrar.class)
 public class GatewayServerMvcAutoConfiguration {
+
+	@Bean
+	@ConditionalOnMissingBean
+	public static GatewayRouteDefinitionLocator gatewayRouteDefinitionLocator(GatewayMvcProperties mvcProperties) {
+		return new PropertyGatewayRouteDefinitionLocator(mvcProperties);
+	}
 
 	@Bean
 	public static ArgumentSupplierBeanPostProcessor argumentSupplierBeanPostProcessor(
@@ -89,7 +90,7 @@ public class GatewayServerMvcAutoConfiguration {
 	@Bean
 	@ConditionalOnMissingBean
 	public ClientHttpRequestFactory gatewayClientHttpRequestFactory(GatewayMvcProperties gatewayMvcProperties,
-			SslBundles sslBundles) {
+																	SslBundles sslBundles) {
 		GatewayMvcProperties.HttpClient properties = gatewayMvcProperties.getHttpClient();
 
 		SslBundle sslBundle = null;
@@ -104,8 +105,7 @@ public class GatewayServerMvcAutoConfiguration {
 			String restrictedHeaders = System.getProperty("jdk.httpclient.allowRestrictedHeaders");
 			if (!StringUtils.hasText(restrictedHeaders)) {
 				System.setProperty("jdk.httpclient.allowRestrictedHeaders", "host");
-			}
-			else if (StringUtils.hasText(restrictedHeaders) && !restrictedHeaders.contains("host")) {
+			} else if (StringUtils.hasText(restrictedHeaders) && !restrictedHeaders.contains("host")) {
 				System.setProperty("jdk.httpclient.allowRestrictedHeaders", restrictedHeaders + ",host");
 			}
 
@@ -130,8 +130,8 @@ public class GatewayServerMvcAutoConfiguration {
 	@Bean
 	@ConditionalOnMissingBean
 	public ProxyExchangeHandlerFunction proxyExchangeHandlerFunction(ProxyExchange proxyExchange,
-			ObjectProvider<RequestHttpHeadersFilter> requestHttpHeadersFilters,
-			ObjectProvider<ResponseHttpHeadersFilter> responseHttpHeadersFilters) {
+																	 ObjectProvider<RequestHttpHeadersFilter> requestHttpHeadersFilters,
+																	 ObjectProvider<ResponseHttpHeadersFilter> responseHttpHeadersFilters) {
 		return new ProxyExchangeHandlerFunction(proxyExchange, requestHttpHeadersFilters, responseHttpHeadersFilters);
 	}
 

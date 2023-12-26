@@ -16,19 +16,10 @@
 
 package org.springframework.cloud.gateway.server.mvc.config;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Consumer;
-
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-
 import org.springframework.aop.scope.ScopedProxyUtils;
+import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.config.BeanDefinitionHolder;
 import org.springframework.beans.factory.support.AbstractBeanDefinition;
 import org.springframework.beans.factory.support.BeanDefinitionBuilder;
@@ -40,14 +31,11 @@ import org.springframework.boot.context.properties.source.ConfigurationPropertyS
 import org.springframework.boot.context.properties.source.MapConfigurationPropertySource;
 import org.springframework.cloud.gateway.server.mvc.common.Configurable;
 import org.springframework.cloud.gateway.server.mvc.common.MvcUtils;
+import org.springframework.cloud.gateway.server.mvc.config.locator.GatewayRouteDefinitionLocator;
 import org.springframework.cloud.gateway.server.mvc.filter.BeforeFilterFunctions;
 import org.springframework.cloud.gateway.server.mvc.filter.FilterDiscoverer;
 import org.springframework.cloud.gateway.server.mvc.handler.HandlerDiscoverer;
-import org.springframework.cloud.gateway.server.mvc.invoke.InvocationContext;
-import org.springframework.cloud.gateway.server.mvc.invoke.OperationArgumentResolver;
-import org.springframework.cloud.gateway.server.mvc.invoke.OperationParameter;
-import org.springframework.cloud.gateway.server.mvc.invoke.OperationParameters;
-import org.springframework.cloud.gateway.server.mvc.invoke.ParameterValueMapper;
+import org.springframework.cloud.gateway.server.mvc.invoke.*;
 import org.springframework.cloud.gateway.server.mvc.invoke.convert.ConversionServiceParameterValueMapper;
 import org.springframework.cloud.gateway.server.mvc.invoke.reflect.OperationMethod;
 import org.springframework.cloud.gateway.server.mvc.invoke.reflect.ReflectiveOperationInvoker;
@@ -59,13 +47,11 @@ import org.springframework.core.log.LogMessage;
 import org.springframework.core.type.AnnotationMetadata;
 import org.springframework.util.MultiValueMap;
 import org.springframework.util.StringUtils;
-import org.springframework.web.servlet.function.HandlerFilterFunction;
-import org.springframework.web.servlet.function.HandlerFunction;
-import org.springframework.web.servlet.function.RequestPredicate;
-import org.springframework.web.servlet.function.RouterFunction;
-import org.springframework.web.servlet.function.RouterFunctions;
-import org.springframework.web.servlet.function.ServerRequest;
-import org.springframework.web.servlet.function.ServerResponse;
+import org.springframework.web.servlet.function.*;
+
+import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 import static org.springframework.cloud.gateway.server.mvc.handler.GatewayRouterFunctions.route;
 
@@ -111,8 +97,9 @@ public class GatewayMvcPropertiesBeanDefinitionRegistrar implements ImportBeanDe
 		// RouterFunction in refresh scope, RouterFunctionMapping will end up with two.
 		// Uses this::routerFunctionHolderSupplier so when the bean is refreshed, that
 		// method is called again.
+
 		AbstractBeanDefinition routerFnProviderBeanDefinition = BeanDefinitionBuilder
-				.genericBeanDefinition(RouterFunctionHolder.class, this::routerFunctionHolderSupplier)
+				.genericBeanDefinition(RouterFunctionHolder.class, () -> routerFunctionHolderSupplier(registry))
 				.getBeanDefinition();
 		// TODO: opt out of refresh scope?
 		// Puts the RouterFunctionHolder in refresh scope
@@ -133,40 +120,37 @@ public class GatewayMvcPropertiesBeanDefinitionRegistrar implements ImportBeanDe
 		registry.registerBeanDefinition("gatewayCompositeRouterFunction", routerFunctionBeanDefinition);
 	}
 
-	@SuppressWarnings({ "unchecked", "rawtypes" })
-	private RouterFunctionHolder routerFunctionHolderSupplier() {
-		GatewayMvcProperties properties = Binder.get(env).bindOrCreate(GatewayMvcProperties.PREFIX,
-				GatewayMvcProperties.class);
-		log.trace(LogMessage.format("RouterFunctionHolder initializing with %d map routes and %d list routes",
-				properties.getRoutesMap().size(), properties.getRoutes().size()));
+	@SuppressWarnings({"unchecked", "rawtypes"})
+	private RouterFunctionHolder routerFunctionHolderSupplier(BeanDefinitionRegistry registry) {
+		Map<String, RouterFunction> perRouteRouterFunctions = getRouterFunctionsFromLocatorBean((BeanFactory) registry);
 
-		Map<String, RouterFunction> routerFunctions = new LinkedHashMap<>();
-		properties.getRoutes().forEach(routeProperties -> {
-			routerFunctions.put(routeProperties.getId(), getRouterFunction(routeProperties, routeProperties.getId()));
-		});
-		properties.getRoutesMap().forEach((routeId, routeProperties) -> {
-			String computedRouteId = routeId;
-			if (StringUtils.hasText(routeProperties.getId())) {
-				computedRouteId = routeProperties.getId();
-			}
-			routerFunctions.put(computedRouteId, getRouterFunction(routeProperties, computedRouteId));
-		});
 		RouterFunction routerFunction;
-		if (routerFunctions.isEmpty()) {
-			// no properties routes, so a RouterFunction that will never match
+		if (perRouteRouterFunctions.isEmpty()) {
+			// no located routes, so a RouterFunction that will never match
 			routerFunction = NEVER_ROUTE;
-		}
-		else {
-			routerFunction = routerFunctions.values().stream().reduce(RouterFunction::andOther).orElse(null);
-			// puts the map of configured RouterFunctions in an attribute. Makes testing
-			// easy.
-			routerFunction = routerFunction.withAttribute("gatewayRouterFunctions", routerFunctions);
+		} else {
+			routerFunction = perRouteRouterFunctions.values().stream().reduce(RouterFunction::andOther).orElse(null);
+			// Puts the map of configured RouterFunctions in an attribute. Makes testing easy.
+			routerFunction = routerFunction.withAttribute("gatewayRouterFunctions", perRouteRouterFunctions);
 		}
 		log.trace(LogMessage.format("RouterFunctionHolder initialized %s", routerFunction.toString()));
 		return new RouterFunctionHolder(routerFunction);
 	}
 
-	@SuppressWarnings({ "unchecked", "rawtypes" })
+	@SuppressWarnings({"rawtypes"})
+	private Map<String, RouterFunction> getRouterFunctionsFromLocatorBean(BeanFactory registry) {
+		GatewayRouteDefinitionLocator gatewayRouteDefinitionLocator = registry.getBean(GatewayRouteDefinitionLocator.class);
+
+		Map<String, RouterFunction> perRouteRouterFunctions = new LinkedHashMap<>();
+		List<RouteProperties> detectedRoutes = gatewayRouteDefinitionLocator.locate();
+		detectedRoutes.forEach(routeProperties -> {
+			perRouteRouterFunctions.put(routeProperties.getId(), getRouterFunction(routeProperties, routeProperties.getId()));
+		});
+
+		return perRouteRouterFunctions;
+	}
+
+	@SuppressWarnings({"unchecked", "rawtypes"})
 	private RouterFunction getRouterFunction(RouteProperties routeProperties, String routeId) {
 		log.trace(LogMessage.format("Creating route for : %s", routeProperties));
 
@@ -201,8 +185,7 @@ public class GatewayMvcPropertiesBeanDefinitionRegistrar implements ImportBeanDe
 		HandlerFunction<ServerResponse> handlerFunction = null;
 		if (response instanceof HandlerFunction<?>) {
 			handlerFunction = (HandlerFunction<ServerResponse>) response;
-		}
-		else if (response instanceof HandlerDiscoverer.Result result) {
+		} else if (response instanceof HandlerDiscoverer.Result result) {
 			handlerFunction = result.getHandlerFunction();
 			result.getFilters().forEach(builder::filter);
 		}
@@ -222,8 +205,7 @@ public class GatewayMvcPropertiesBeanDefinitionRegistrar implements ImportBeanDe
 									predicateProperties));
 							if (predicate.get() == null) {
 								predicate.set(requestPredicate);
-							}
-							else {
+							} else {
 								RequestPredicate combined = predicate.get().and(requestPredicate);
 								predicate.set(combined);
 							}
@@ -246,7 +228,7 @@ public class GatewayMvcPropertiesBeanDefinitionRegistrar implements ImportBeanDe
 	}
 
 	private <T> void translate(MultiValueMap<String, OperationMethod> operations, String operationName,
-			Map<String, String> operationArgs, Class<T> returnType, Consumer<T> operationHandler) {
+							   Map<String, String> operationArgs, Class<T> returnType, Consumer<T> operationHandler) {
 		String normalizedName = StringUtils.uncapitalize(operationName);
 		Optional<NormalizedOperationMethod> operationMethod = findOperation(operations, normalizedName, operationArgs);
 		if (operationMethod.isPresent()) {
@@ -255,15 +237,14 @@ public class GatewayMvcPropertiesBeanDefinitionRegistrar implements ImportBeanDe
 			if (handlerFilterFunction != null) {
 				operationHandler.accept(handlerFilterFunction);
 			}
-		}
-		else {
+		} else {
 			throw new IllegalArgumentException(String.format("Unable to find operation %s for %s with args %s",
 					returnType, normalizedName, operationArgs));
 		}
 	}
 
 	private Optional<NormalizedOperationMethod> findOperation(MultiValueMap<String, OperationMethod> operations,
-			String operationName, Map<String, String> operationArgs) {
+															  String operationName, Map<String, String> operationArgs) {
 		return operations.getOrDefault(operationName, Collections.emptyList()).stream()
 				.map(operationMethod -> new NormalizedOperationMethod(operationMethod, operationArgs))
 				.filter(opeMethod -> matchOperation(opeMethod, operationArgs)).findFirst();
@@ -294,8 +275,7 @@ public class GatewayMvcPropertiesBeanDefinitionRegistrar implements ImportBeanDe
 			OperationParameter operationParameter = operationMethod.getParameters().get(0);
 			Object config = bindConfigurable(operationMethod, args, operationParameter);
 			args.put(operationParameter.getName(), config);
-		}
-		else {
+		} else {
 			args.putAll(operationArgs);
 		}
 		ReflectiveOperationInvoker operationInvoker = new ReflectiveOperationInvoker(operationMethod,
@@ -305,7 +285,7 @@ public class GatewayMvcPropertiesBeanDefinitionRegistrar implements ImportBeanDe
 	}
 
 	private static Object bindConfigurable(OperationMethod operationMethod, Map<String, Object> args,
-			OperationParameter operationParameter) {
+										   OperationParameter operationParameter) {
 		Class<?> configurableType = operationParameter.getType();
 		Configurable configurable = operationMethod.getMethod().getAnnotation(Configurable.class);
 		if (configurable != null && !configurable.value().equals(Void.class)) {
@@ -376,13 +356,13 @@ public class GatewayMvcPropertiesBeanDefinitionRegistrar implements ImportBeanDe
 
 		@Override
 		public RouterFunction<ServerResponse> andRoute(RequestPredicate predicate,
-				HandlerFunction<ServerResponse> handlerFunction) {
+													   HandlerFunction<ServerResponse> handlerFunction) {
 			return this.provider.getRouterFunction().andRoute(predicate, handlerFunction);
 		}
 
 		@Override
 		public RouterFunction<ServerResponse> andNest(RequestPredicate predicate,
-				RouterFunction<ServerResponse> routerFunction) {
+													  RouterFunction<ServerResponse> routerFunction) {
 			return this.provider.getRouterFunction().andNest(predicate, routerFunction);
 		}
 
