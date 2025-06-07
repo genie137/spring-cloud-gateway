@@ -34,6 +34,7 @@ import java.util.Optional;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
+import org.springframework.cloud.gateway.server.mvc.config.RouteProperties;
 import org.springframework.context.ApplicationContext;
 import org.springframework.core.log.LogMessage;
 import org.springframework.http.HttpHeaders;
@@ -96,6 +97,11 @@ public abstract class MvcUtils {
 	 * Gateway route ID attribute name.
 	 */
 	public static final String GATEWAY_ROUTE_ID_ATTR = qualify("gatewayRouteId");
+
+	/**
+	 * Gateway route Properties attribute name.
+	 */
+	public static final String GATEWAY_ROUTE_PROPERTIES_ATTR = qualify("gatewayRouteProperties");
 
 	/**
 	 * Preserve-Host header attribute name.
@@ -263,6 +269,11 @@ public abstract class MvcUtils {
 	public static void setRequestUrl(ServerRequest request, URI url) {
 		request.attributes().put(GATEWAY_REQUEST_URL_ATTR, url);
 		request.servletRequest().setAttribute(GATEWAY_REQUEST_URL_ATTR, url);
+	}
+
+	public static void setRouteProperties(ServerRequest request, RouteProperties routeProperties) {
+		request.attributes().put(GATEWAY_ROUTE_PROPERTIES_ATTR, routeProperties);
+		request.servletRequest().setAttribute(GATEWAY_ROUTE_PROPERTIES_ATTR, routeProperties);
 	}
 
 	@SuppressWarnings("unchecked")
