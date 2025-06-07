@@ -12,6 +12,7 @@ public abstract class GlobalHandlerFilterFunction implements HandlerFilterFuncti
 	}
 
 	public ServerResponse doFilter(ServerRequest request, HandlerFunction<ServerResponse> next) throws Exception {
+		System.out.println("GlobalHandlerFilterFunction doFilter");
 		return doFilterOnResponse(next.handle(doFilterOnRequest(request)));
 	}
 
