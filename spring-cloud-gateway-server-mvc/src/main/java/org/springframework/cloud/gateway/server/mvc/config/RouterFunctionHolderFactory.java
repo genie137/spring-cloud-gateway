@@ -46,6 +46,8 @@ import org.springframework.cloud.gateway.server.mvc.common.Configurable;
 import org.springframework.cloud.gateway.server.mvc.common.MvcUtils;
 import org.springframework.cloud.gateway.server.mvc.filter.FilterBeanFactoryDiscoverer;
 import org.springframework.cloud.gateway.server.mvc.filter.FilterDiscoverer;
+import org.springframework.cloud.gateway.server.mvc.filter.global.GlobalHandlerFilterFunction;
+import org.springframework.cloud.gateway.server.mvc.filter.global.TestGlobalHandlerFilterFunction;
 import org.springframework.cloud.gateway.server.mvc.handler.HandlerDiscoverer;
 import org.springframework.cloud.gateway.server.mvc.handler.HandlerFunctionDefinition;
 import org.springframework.cloud.gateway.server.mvc.invoke.InvocationContext;
@@ -112,6 +114,7 @@ public class RouterFunctionHolderFactory {
 
 	private final ParameterValueMapper parameterValueMapper = new ConversionServiceParameterValueMapper();
 
+
 	private final BeanFactory beanFactory;
 
 	private final FilterBeanFactoryDiscoverer filterBeanFactoryDiscoverer;
@@ -120,18 +123,23 @@ public class RouterFunctionHolderFactory {
 
 	private final ConversionService conversionService;
 
+	private final List<GlobalHandlerFilterFunction> globalHandlerFilterFunctions;
+
 	@Deprecated
 	public RouterFunctionHolderFactory(Environment env) {
 		this(env, null, null, null);
 	}
 
-	public RouterFunctionHolderFactory(Environment env, BeanFactory beanFactory,
-			FilterBeanFactoryDiscoverer filterBeanFactoryDiscoverer,
-			PredicateBeanFactoryDiscoverer predicateBeanFactoryDiscoverer) {
+	public RouterFunctionHolderFactory(Environment env, BeanFactory beanFactory, FilterBeanFactoryDiscoverer filterBeanFactoryDiscoverer, PredicateBeanFactoryDiscoverer predicateBeanFactoryDiscoverer) {
+		this(env, beanFactory, filterBeanFactoryDiscoverer, predicateBeanFactoryDiscoverer, List.of(new TestGlobalHandlerFilterFunction()));
+	}
+
+	public RouterFunctionHolderFactory(Environment env, BeanFactory beanFactory, FilterBeanFactoryDiscoverer filterBeanFactoryDiscoverer, PredicateBeanFactoryDiscoverer predicateBeanFactoryDiscoverer, List<GlobalHandlerFilterFunction> globalHandlerFilterFunctions) {
 		this.env = env;
 		this.beanFactory = beanFactory;
 		this.filterBeanFactoryDiscoverer = filterBeanFactoryDiscoverer;
 		this.predicateBeanFactoryDiscoverer = predicateBeanFactoryDiscoverer;
+		this.globalHandlerFilterFunctions = globalHandlerFilterFunctions;
 		if (beanFactory instanceof ConfigurableBeanFactory configurableBeanFactory) {
 			if (configurableBeanFactory.getConversionService() != null) {
 				this.conversionService = configurableBeanFactory.getConversionService();
@@ -157,8 +165,10 @@ public class RouterFunctionHolderFactory {
 				properties.getRoutesMap().size(), properties.getRoutes().size()));
 
 		Map<String, RouterFunction> routerFunctions = new LinkedHashMap<>();
+		Map<String, RouteProperties> routePropertiesMap = new LinkedHashMap<>();
 		properties.getRoutes().forEach(routeProperties -> {
 			routerFunctions.put(routeProperties.getId(), getRouterFunction(routeProperties, routeProperties.getId()));
+			routePropertiesMap.put(routeProperties.getId(), routeProperties);
 		});
 		properties.getRoutesMap().forEach((routeId, routeProperties) -> {
 			String computedRouteId = routeId;
@@ -166,6 +176,7 @@ public class RouterFunctionHolderFactory {
 				computedRouteId = routeProperties.getId();
 			}
 			routerFunctions.put(computedRouteId, getRouterFunction(routeProperties, computedRouteId));
+			routePropertiesMap.put(computedRouteId, routeProperties);
 		});
 		RouterFunction routerFunction;
 		if (routerFunctions.isEmpty()) {
@@ -176,10 +187,12 @@ public class RouterFunctionHolderFactory {
 			routerFunction = routerFunctions.values().stream().reduce(RouterFunction::andOther).orElse(null);
 			// puts the map of configured RouterFunctions in an attribute. Makes testing
 			// easy.
-			routerFunction = routerFunction.withAttribute("gatewayRouterFunctions", routerFunctions);
+			routerFunction = routerFunction
+					.withAttribute("gatewayRouterFunctions", routerFunctions)
+					.withAttribute("gatewayRouteProperties", routePropertiesMap);
 		}
 		log.trace(LogMessage.format("RouterFunctionHolder initialized %s", routerFunction.toString()));
-		return new GatewayMvcPropertiesBeanDefinitionRegistrar.RouterFunctionHolder(routerFunction);
+		return new GatewayMvcPropertiesBeanDefinitionRegistrar.RouterFunctionHolder(routerFunction, routePropertiesMap);
 	}
 
 	@SuppressWarnings({ "unchecked", "rawtypes" })
@@ -286,6 +299,10 @@ public class RouterFunctionHolderFactory {
 			Map<String, Object> args = new LinkedHashMap<>(filterProperties.getArgs());
 			translate(filterOperations, filterProperties.getName(), args, HandlerFilterFunction.class, builder::filter);
 		});
+
+		if (!this.globalHandlerFilterFunctions.isEmpty()) {
+			this.globalHandlerFilterFunctions.forEach(builder::filter);
+		}
 
 		// HandlerDiscoverer filters need higher priority, so put them last
 		higherPrecedenceFilters.forEach(builder::filter);
