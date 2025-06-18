@@ -85,19 +85,13 @@ public class GatewayMvcPropertiesBeanDefinitionRegistrar implements ImportBeanDe
 	public static class RouterFunctionHolder {
 
 		private final RouterFunction<ServerResponse> routerFunction;
-		private final Map<String, RouteProperties> routePropertiesMap;
 
-		public RouterFunctionHolder(RouterFunction<ServerResponse> routerFunction, Map<String, RouteProperties> routePropertiesMap) {
+		public RouterFunctionHolder(RouterFunction<ServerResponse> routerFunction) {
 			this.routerFunction = routerFunction;
-			this.routePropertiesMap = routePropertiesMap;
 		}
 
 		public RouterFunction<ServerResponse> getRouterFunction() {
 			return this.routerFunction;
-		}
-
-		public Map<String, RouteProperties> getRoutePropertiesMap() {
-			return this.routePropertiesMap;
 		}
 
 	}

@@ -21,9 +21,9 @@ import java.util.Map;
 
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.http.client.AbstractHttpRequestFactoryProperties.Factory;
@@ -54,6 +54,7 @@ import org.springframework.cloud.gateway.server.mvc.filter.WeightCalculatorFilte
 import org.springframework.cloud.gateway.server.mvc.filter.XForwardedRequestHeadersFilter;
 import org.springframework.cloud.gateway.server.mvc.filter.XForwardedRequestHeadersFilterProperties;
 import org.springframework.cloud.gateway.server.mvc.filter.global.GlobalHandlerFilterFunction;
+import org.springframework.cloud.gateway.server.mvc.filter.global.GlobalHandlerFilterHolder;
 import org.springframework.cloud.gateway.server.mvc.handler.HandlerFunctionAutoConfiguration;
 import org.springframework.cloud.gateway.server.mvc.handler.ProxyExchange;
 import org.springframework.cloud.gateway.server.mvc.handler.ProxyExchangeHandlerFunction;
@@ -65,7 +66,6 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.MapPropertySource;
@@ -94,23 +94,17 @@ public class GatewayServerMvcAutoConfiguration {
 	}
 
 	@Bean
-	public RouterFunctionHolderFactory routerFunctionHolderFactory(Environment env, BeanFactory beanFactory,
-			FilterBeanFactoryDiscoverer filterBeanFactoryDiscoverer,
-			PredicateBeanFactoryDiscoverer predicateBeanFactoryDiscoverer) {
-		return new RouterFunctionHolderFactory(env, beanFactory, filterBeanFactoryDiscoverer,
-				predicateBeanFactoryDiscoverer);
+	public GlobalHandlerFilterHolder globalHandlerFilterHolder(@Autowired(required = false) List<GlobalHandlerFilterFunction>  globalHandlerFilterFunctions) {
+		return new GlobalHandlerFilterHolder(globalHandlerFilterFunctions);
 	}
 
 	@Bean
-	@Primary
-	@ConditionalOnBean(GlobalHandlerFilterFunction.class)
-	public RouterFunctionHolderFactory routerFunctionHolderFactoryWithGlobalHandlerFilterFunctions(Environment env, BeanFactory beanFactory,
+	public RouterFunctionHolderFactory routerFunctionHolderFactory(Environment env, BeanFactory beanFactory,
 			FilterBeanFactoryDiscoverer filterBeanFactoryDiscoverer,
-			PredicateBeanFactoryDiscoverer predicateBeanFactoryDiscoverer, List<GlobalHandlerFilterFunction>  globalHandlerFilterFunctions) {
+			PredicateBeanFactoryDiscoverer predicateBeanFactoryDiscoverer, GlobalHandlerFilterHolder globalHandlerFilterHolder) {
 		return new RouterFunctionHolderFactory(env, beanFactory, filterBeanFactoryDiscoverer,
-				predicateBeanFactoryDiscoverer, globalHandlerFilterFunctions);
+				predicateBeanFactoryDiscoverer, globalHandlerFilterHolder);
 	}
-
 
 	@Bean
 	public RestClientCustomizer gatewayRestClientCustomizer(

@@ -8,6 +8,7 @@ import org.springframework.web.servlet.function.ServerResponse;
 public class TestGlobalHandlerFilterFunction extends GlobalHandlerFilterFunction {
 
 	public TestGlobalHandlerFilterFunction() {
+		super(GlobalFilterPosition.BEFORE_ROUTE_CONFIGURED_FILTERS, 1);
 	}
 
 	@Override
