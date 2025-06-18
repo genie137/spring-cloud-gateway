@@ -46,19 +46,19 @@ public class HandlerFunctionAutoConfiguration {
 
 	@Bean
 	public Function<RouteProperties, HandlerFunctionDefinition> httpHandlerFunctionDefinition() {
-		return routeProperties -> getResult("http", routeProperties.getId(), routeProperties.getUri(),
+		return routeProperties -> getResult("http", routeProperties,
 				HandlerFunctions.http());
 	}
 
 	@Bean
 	public Function<RouteProperties, HandlerFunctionDefinition> httpsHandlerFunctionDefinition() {
-		return routeProperties -> getResult("https", routeProperties.getId(), routeProperties.getUri(),
+		return routeProperties -> getResult("https", routeProperties,
 				HandlerFunctions.https());
 	}
 
 	@Bean
 	public Function<RouteProperties, HandlerFunctionDefinition> noHandlerFunctionDefinition() {
-		return routeProperties -> getResult("no", routeProperties.getId(), routeProperties.getUri(),
+		return routeProperties -> getResult("no", routeProperties,
 				HandlerFunctions.no());
 	}
 
@@ -68,17 +68,26 @@ public class HandlerFunctionAutoConfiguration {
 				HandlerFunctions.stream(routeProperties.getUri().getSchemeSpecificPart()));
 	}
 
-	private static HandlerFunctionDefinition getResult(String scheme, String id, URI uri,
+	private static HandlerFunctionDefinition getResult(String scheme, RouteProperties routeProperties,
 			HandlerFunction<ServerResponse> handlerFunction) {
-		HandlerFilterFunction<ServerResponse, ServerResponse> setId = setIdFilter(id);
-		HandlerFilterFunction<ServerResponse, ServerResponse> setRequest = setRequestUrlFilter(uri);
-		return new HandlerFunctionDefinition.Default(scheme, handlerFunction, Arrays.asList(setId, setRequest),
+		HandlerFilterFunction<ServerResponse, ServerResponse> setId = setIdFilter(routeProperties.getId());
+		HandlerFilterFunction<ServerResponse, ServerResponse> setRequest = setRequestUrlFilter(routeProperties.getUri());
+		HandlerFilterFunction<ServerResponse, ServerResponse> setProperties = setRoutePropertiesFilter(routeProperties);
+		return new HandlerFunctionDefinition.Default(scheme, handlerFunction, Arrays.asList(setId, setRequest, setProperties),
 				Collections.emptyList());
 	}
+
 
 	private static HandlerFilterFunction<ServerResponse, ServerResponse> setIdFilter(String id) {
 		return (request, next) -> {
 			MvcUtils.setRouteId(request, id);
+			return next.handle(request);
+		};
+	}
+
+	private static HandlerFilterFunction<ServerResponse, ServerResponse> setRoutePropertiesFilter(RouteProperties routeProperties) {
+		return (request, next) -> {
+			MvcUtils.setRouteProperties(request, routeProperties);
 			return next.handle(request);
 		};
 	}

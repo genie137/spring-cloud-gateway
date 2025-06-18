@@ -46,6 +46,8 @@ import org.springframework.cloud.gateway.server.mvc.common.Configurable;
 import org.springframework.cloud.gateway.server.mvc.common.MvcUtils;
 import org.springframework.cloud.gateway.server.mvc.filter.FilterBeanFactoryDiscoverer;
 import org.springframework.cloud.gateway.server.mvc.filter.FilterDiscoverer;
+import org.springframework.cloud.gateway.server.mvc.filter.global.GlobalFilterPosition;
+import org.springframework.cloud.gateway.server.mvc.filter.global.GlobalHandlerFilterHolder;
 import org.springframework.cloud.gateway.server.mvc.handler.HandlerDiscoverer;
 import org.springframework.cloud.gateway.server.mvc.handler.HandlerFunctionDefinition;
 import org.springframework.cloud.gateway.server.mvc.invoke.InvocationContext;
@@ -120,13 +122,17 @@ public class RouterFunctionHolderFactory {
 
 	private final ConversionService conversionService;
 
+	private final GlobalHandlerFilterHolder globalHandlerFilterHolder;
+
 	public RouterFunctionHolderFactory(Environment env, BeanFactory beanFactory,
 			FilterBeanFactoryDiscoverer filterBeanFactoryDiscoverer,
-			PredicateBeanFactoryDiscoverer predicateBeanFactoryDiscoverer) {
+			PredicateBeanFactoryDiscoverer predicateBeanFactoryDiscoverer,
+			GlobalHandlerFilterHolder globalHandlerFilterHolder) {
 		this.env = env;
 		this.beanFactory = beanFactory;
 		this.filterBeanFactoryDiscoverer = filterBeanFactoryDiscoverer;
 		this.predicateBeanFactoryDiscoverer = predicateBeanFactoryDiscoverer;
+		this.globalHandlerFilterHolder = globalHandlerFilterHolder;
 		if (beanFactory instanceof ConfigurableBeanFactory configurableBeanFactory) {
 			if (configurableBeanFactory.getConversionService() != null) {
 				this.conversionService = configurableBeanFactory.getConversionService();
@@ -268,8 +274,16 @@ public class RouterFunctionHolderFactory {
 		builder.route(predicate.get(), handlerFunction);
 		predicate.set(null);
 
+		if (this.globalHandlerFilterHolder != null) {
+			this.globalHandlerFilterHolder.getSortedForPosition(GlobalFilterPosition.BEFORE_DEFAULT_LOW_PRECEDENCE_FILTERS).forEach(builder::filter);
+		}
+
 		// HandlerDiscoverer filters needing lower priority, so put them first
 		lowerPrecedenceFilters.forEach(builder::filter);
+
+		if (this.globalHandlerFilterHolder != null) {
+			this.globalHandlerFilterHolder.getSortedForPosition(GlobalFilterPosition.BEFORE_ROUTE_CONFIGURED_FILTERS).forEach(builder::filter);
+		}
 
 		// translate filters
 		MultiValueMap<String, OperationMethod> filterOperations = new LinkedMultiValueMap<>();
@@ -279,11 +293,33 @@ public class RouterFunctionHolderFactory {
 		filterOperations.addAll(filterDiscoverer.getOperations());
 		routeProperties.getFilters().forEach(filterProperties -> {
 			Map<String, Object> args = new LinkedHashMap<>(filterProperties.getArgs());
-			translate(filterOperations, filterProperties.getName(), args, HandlerFilterFunction.class, builder::filter);
+			translate(filterOperations, filterProperties.getName(), args, HandlerFilterFunction.class, f -> {
+
+				if (this.globalHandlerFilterHolder != null) {
+					this.globalHandlerFilterHolder.getSortedForPositionAndRouteFilterName(GlobalFilterPosition.BEFORE_CERTAIN_CONFIGURED_ROUTE_FILTER, StringUtils.uncapitalize(filterProperties.getName()))
+							.forEach(builder::filter);
+				}
+
+				builder.filter(f);
+
+				if (this.globalHandlerFilterHolder != null) {
+					this.globalHandlerFilterHolder.getSortedForPositionAndRouteFilterName(GlobalFilterPosition.AFTER_CERTAIN_CONFIGURED_ROUTE_FILTER , StringUtils.uncapitalize(filterProperties.getName()))
+							.forEach(builder::filter);
+				}
+
+			});
 		});
+
+		if (this.globalHandlerFilterHolder != null) {
+			this.globalHandlerFilterHolder.getSortedForPosition(GlobalFilterPosition.AFTER_ROUTE_CONFIGURED_FILTERS).forEach(builder::filter);
+		}
 
 		// HandlerDiscoverer filters need higher priority, so put them last
 		higherPrecedenceFilters.forEach(builder::filter);
+
+		if (this.globalHandlerFilterHolder != null) {
+			this.globalHandlerFilterHolder.getSortedForPosition(GlobalFilterPosition.AFTER_DEFAULT_HIGH_PRECEDENCE_FILTERS).forEach(builder::filter);
+		}
 
 		builder.withAttribute(MvcUtils.GATEWAY_ROUTE_ID_ATTR, routeId);
 

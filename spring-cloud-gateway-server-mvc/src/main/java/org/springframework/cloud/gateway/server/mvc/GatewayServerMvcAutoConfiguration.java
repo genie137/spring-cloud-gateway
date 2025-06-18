@@ -16,10 +16,12 @@
 
 package org.springframework.cloud.gateway.server.mvc;
 
+import java.util.List;
 import java.util.Map;
 
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -51,6 +53,8 @@ import org.springframework.cloud.gateway.server.mvc.filter.TrustedProxies;
 import org.springframework.cloud.gateway.server.mvc.filter.WeightCalculatorFilter;
 import org.springframework.cloud.gateway.server.mvc.filter.XForwardedRequestHeadersFilter;
 import org.springframework.cloud.gateway.server.mvc.filter.XForwardedRequestHeadersFilterProperties;
+import org.springframework.cloud.gateway.server.mvc.filter.global.GlobalHandlerFilterFunction;
+import org.springframework.cloud.gateway.server.mvc.filter.global.GlobalHandlerFilterHolder;
 import org.springframework.cloud.gateway.server.mvc.handler.HandlerFunctionAutoConfiguration;
 import org.springframework.cloud.gateway.server.mvc.handler.ProxyExchange;
 import org.springframework.cloud.gateway.server.mvc.handler.ProxyExchangeHandlerFunction;
@@ -90,11 +94,16 @@ public class GatewayServerMvcAutoConfiguration {
 	}
 
 	@Bean
+	public GlobalHandlerFilterHolder globalHandlerFilterHolder(@Autowired(required = false) List<GlobalHandlerFilterFunction>  globalHandlerFilterFunctions) {
+		return new GlobalHandlerFilterHolder(globalHandlerFilterFunctions);
+	}
+
+	@Bean
 	public RouterFunctionHolderFactory routerFunctionHolderFactory(Environment env, BeanFactory beanFactory,
 			FilterBeanFactoryDiscoverer filterBeanFactoryDiscoverer,
-			PredicateBeanFactoryDiscoverer predicateBeanFactoryDiscoverer) {
+			PredicateBeanFactoryDiscoverer predicateBeanFactoryDiscoverer, GlobalHandlerFilterHolder globalHandlerFilterHolder) {
 		return new RouterFunctionHolderFactory(env, beanFactory, filterBeanFactoryDiscoverer,
-				predicateBeanFactoryDiscoverer);
+				predicateBeanFactoryDiscoverer, globalHandlerFilterHolder);
 	}
 
 	@Bean
