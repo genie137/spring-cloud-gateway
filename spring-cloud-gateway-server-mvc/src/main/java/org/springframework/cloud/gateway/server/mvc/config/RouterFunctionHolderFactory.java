@@ -48,6 +48,7 @@ import org.springframework.cloud.gateway.server.mvc.filter.FilterBeanFactoryDisc
 import org.springframework.cloud.gateway.server.mvc.filter.FilterDiscoverer;
 import org.springframework.cloud.gateway.server.mvc.filter.global.GlobalHandlerFilterFunction;
 import org.springframework.cloud.gateway.server.mvc.filter.global.TestGlobalHandlerFilterFunction;
+import org.springframework.cloud.gateway.server.mvc.filter.global.GlobalHandlerFilterFunction;
 import org.springframework.cloud.gateway.server.mvc.handler.HandlerDiscoverer;
 import org.springframework.cloud.gateway.server.mvc.handler.HandlerFunctionDefinition;
 import org.springframework.cloud.gateway.server.mvc.invoke.InvocationContext;
@@ -114,7 +115,6 @@ public class RouterFunctionHolderFactory {
 
 	private final ParameterValueMapper parameterValueMapper = new ConversionServiceParameterValueMapper();
 
-
 	private final BeanFactory beanFactory;
 
 	private final FilterBeanFactoryDiscoverer filterBeanFactoryDiscoverer;
@@ -125,16 +125,10 @@ public class RouterFunctionHolderFactory {
 
 	private final List<GlobalHandlerFilterFunction> globalHandlerFilterFunctions;
 
-	@Deprecated
-	public RouterFunctionHolderFactory(Environment env) {
-		this(env, null, null, null);
-	}
-
-	public RouterFunctionHolderFactory(Environment env, BeanFactory beanFactory, FilterBeanFactoryDiscoverer filterBeanFactoryDiscoverer, PredicateBeanFactoryDiscoverer predicateBeanFactoryDiscoverer) {
-		this(env, beanFactory, filterBeanFactoryDiscoverer, predicateBeanFactoryDiscoverer, List.of(new TestGlobalHandlerFilterFunction()));
-	}
-
-	public RouterFunctionHolderFactory(Environment env, BeanFactory beanFactory, FilterBeanFactoryDiscoverer filterBeanFactoryDiscoverer, PredicateBeanFactoryDiscoverer predicateBeanFactoryDiscoverer, List<GlobalHandlerFilterFunction> globalHandlerFilterFunctions) {
+	public RouterFunctionHolderFactory(Environment env, BeanFactory beanFactory,
+			FilterBeanFactoryDiscoverer filterBeanFactoryDiscoverer,
+			PredicateBeanFactoryDiscoverer predicateBeanFactoryDiscoverer,
+			List<GlobalHandlerFilterFunction> globalHandlerFilterFunctions) {
 		this.env = env;
 		this.beanFactory = beanFactory;
 		this.filterBeanFactoryDiscoverer = filterBeanFactoryDiscoverer;
